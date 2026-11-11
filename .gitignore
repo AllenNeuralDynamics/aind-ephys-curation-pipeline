@@ -2,3 +2,9 @@
 
 # PyCharm folder
 .idea/
+
+# test outputs
+tests/results*/
+tests/sample_dataset/results/
+tests/sample_dataset/raw/
+tests/sample_dataset/processed/
