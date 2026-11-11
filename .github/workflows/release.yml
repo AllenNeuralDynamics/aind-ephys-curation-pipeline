@@ -1,0 +1,11 @@
+name: Tag and publish
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    if: ${{github.event.repository.name != 'aind-pipeline-template'}}
+    uses: AllenNeuralDynamics/.github/.github/workflows/release-tag-and-publish-pipeline.yml@main
