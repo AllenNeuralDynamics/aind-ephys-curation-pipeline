@@ -1,0 +1,49 @@
+# Runs the pipeline on a synthetic raw session + processed asset (tests/sample_dataset/create_test_data.py)
+# with oversplit and noise units, and checks the curated asset against the expected curation.
+name: Test pipeline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NXF_SYNTAX_PARSER: v1
+  CONTAINER_TAG: "1.5.1"
+
+jobs:
+  test:
+    name: Test pipeline on synthetic data
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate test data
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$(pwd):$(pwd)" -w "$(pwd)" \
+            "ghcr.io/allenneuraldynamics/aind-ephys-pipeline-nwb:${CONTAINER_TAG}" \
+            python tests/sample_dataset/create_test_data.py
+
+      - name: Set up Nextflow
+        uses: nf-core/setup-nextflow@v1
+        with:
+          version: latest-stable
+
+      - name: Run Nextflow pipeline
+        run: |
+          RESULTS_PATH="$(pwd)/tests/sample_dataset/results" \
+          nextflow -C "$(pwd)/.github/workflows/nextflow_test.config" run pipeline/main.nf \
+            --ecephys_url "$(pwd)/tests/sample_dataset/raw" \
+            --sorted_url "$(pwd)/tests/sample_dataset/processed" \
+            --params_file "$(pwd)/tests/params_test_sample.json"
+
+      - name: Check pipeline results
+        run: |
+          python3 tests/check_results.py --results-path "$(pwd)/tests/sample_dataset/results" \
+            --sorted-url "$(pwd)/tests/sample_dataset/processed"

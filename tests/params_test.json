@@ -1,0 +1,32 @@
+{
+    "logging": {
+        "package": "logging",
+        "logging_cfg": {
+            "level": "INFO",
+            "format": "%(asctime)s - %(levelname)s - %(message)s"
+        }
+    },
+    "job_dispatch": {
+        "split_segments": true,
+        "split_groups": true,
+        "debug": false,
+        "debug_duration": 30,
+        "skip_timestamps_check": false,
+        "multi_session": false,
+        "min_recording_duration": 300,
+        "input": "aind",
+        "streaming": true
+    },
+    "apply_curation": {
+        "noise_removal_strategy": "unitrefine&bombcell",
+        "censor_ms": 0.5,
+        "merging_mode": "soft"
+    },
+    "quality_control": {
+        "pipeline_data_path": null
+    },
+    "nwb_units": {
+        "stub": false,
+        "stub_units": 10
+    }
+}
