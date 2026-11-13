@@ -7,7 +7,8 @@ nextflow.enable.dsl = 2
  *   per session: quality_control_collector (keeps the raw-data QC of the processed asset)
  *                job_dispatch -> nwb_units (replaces the units table of the processed asset NWB)
  * Inputs: --ecephys_url (raw session) and --sorted_url (processed asset), local paths or s3:// URLs.
- * Outputs (RESULTS_PATH): postprocessed/, curated/, quality_control.json, quality_control/, nwb/
+ * Outputs (RESULTS_PATH): postprocessed/, curated/, quality_control.json, quality_control/, nwb/, processing.json,
+ *   and, unchanged from the processed asset: preprocessed/, spikesorted/ and the other top-level JSONs
  */
 
 params.ecephys_url = null
@@ -134,9 +135,10 @@ versions_file.eachLine { line ->
 }
 ['job_dispatch', 'apply_curation', 'quality_control', 'quality_control_collector', 'nwb_units'].each { step ->
     def key = step.toUpperCase()
-    if (params.containsKey("${step}_repo")) { versions["${key}_REPO"] = params["${step}_repo"] }
-    if (params.containsKey("${step}_version")) { versions["${key}_VERSION"] = params["${step}_version"] }
-    println "${key}: ${versions["${key}_REPO"]} @ ${versions["${key}_VERSION"]}"
+    // String keys: a GString never matches the keys of params
+    if (params.containsKey(step + "_repo")) { versions[key + "_REPO"] = params[step + "_repo"] }
+    if (params.containsKey(step + "_version")) { versions[key + "_VERSION"] = params[step + "_version"] }
+    println "${key}: ${versions[key + '_REPO']} @ ${versions[key + '_VERSION']}"
 }
 
 def extra_installs_list = params.extra_installs ? params.extra_installs.split(',').collect { it.trim() }.findAll { it } : []
@@ -166,6 +168,23 @@ def curatedAssetPath(String filename) {
     def curation = name =~ /^curation_(.+)\.json$/
     if (curation.matches()) return "curated/${curation.group(1)}/curation.json"
     return null
+}
+
+// Copies the parts of the processed asset that curation does not change to RESULTS_PATH: preprocessed/,
+// spikesorted/ and the top-level JSONs (processing.json and quality_control.json are rewritten by the pipeline).
+// visualization/ is left out: its figures show the units before curation.
+def publishUnchangedAssetFiles() {
+    def results = file(RESULTS_PATH.toString())
+    results.mkdirs()
+    def sources = ['preprocessed', 'spikesorted'].collect { file("${sorted_path}/${it}") }.findAll { it.exists() } +
+        files("${sorted_path}/*.json").findAll { !(it.name in ['processing.json', 'quality_control.json']) }
+    sources.each { source ->
+        def target = results.resolve(source.name)
+        // copyTo nests a folder into an existing target, e.g. when re-running into the same RESULTS_PATH
+        if (target.exists()) { target.isDirectory() ? target.deleteDir() : target.delete() }
+        println "Publishing ${source.name} from the processed asset"
+        source.copyTo(target)
+    }
 }
 
 // Streaming (AIND input): copy only the small metadata of a remote session into metadata_folder
@@ -305,7 +324,50 @@ process nwb_units {
     """
 }
 
+// Appends the apply_curation data processes (and this pipeline) to the processing.json of the processed asset
+process processing_metadata {
+    tag 'processing-metadata'
+    container "ghcr.io/allenneuraldynamics/aind-ephys-pipeline-base:${params.container_tag}"
+    publishDir "$RESULTS_PATH", mode: 'copy'
+
+    input:
+    path previous_processing, stageAs: 'previous/processing.json'
+    path data_processes, stageAs: 'data_processes/*'
+
+    output:
+    path 'processing.json'
+
+    script:
+    """
+    #!/usr/bin/env python
+    import json
+    import os
+    from pathlib import Path
+    from aind_data_schema.core.processing import Processing, DataProcess
+    from aind_data_schema.components.identifiers import Code
+
+    pipeline_name = "AIND Ephys Curation Pipeline"
+    previous_file = Path("previous/processing.json")
+    previous = json.loads(previous_file.read_text()) if previous_file.is_file() else {}
+    new_processes = [json.loads(p.read_text()) for p in sorted(Path("data_processes").glob("*.json"))]
+    for data_process in new_processes:
+        data_process["pipeline_name"] = pipeline_name
+    pipeline = Code(
+        name=pipeline_name,
+        url=os.getenv("PIPELINE_URL", "https://github.com/AllenNeuralDynamics/aind-ephys-curation-pipeline"),
+        version=os.getenv("PIPELINE_VERSION", ""),
+    )
+    processing = Processing.create_with_sequential_process_graph(
+        pipelines=[Code(**p) for p in previous.get("pipelines", [])] + [pipeline],
+        data_processes=[DataProcess(**d) for d in previous.get("data_processes", []) + new_processes],
+    )
+    processing.write_standard_file(output_directory=Path("."))
+    """
+}
+
 workflow {
+    publishUnchangedAssetFiles()
+
     def params_ch = Channel.value(file(full_params_file.toString()))
     def session_path = streaming ? aind_partial_staging(ecephys_path, file("${workDir}/streaming_session")).toString() : ecephys_path
     def session_ch = Channel.fromPath(session_path + "/", type: 'any').collect()
@@ -319,6 +381,13 @@ workflow {
 
     apply_curation_out = apply_curation(streams, params_ch)
     quality_control_out = quality_control(apply_curation_out.results, params_ch)
+
+    def previous_processing = file("${sorted_path}/processing.json")
+    processing_metadata(
+        Channel.value(previous_processing.exists() ? previous_processing : []),
+        apply_curation_out.results.map { meta, files -> files.findAll { it.name.startsWith('data_process_') } }
+            .flatten().collect().ifEmpty([])
+    )
 
     def previous_qc = [file("${sorted_path}/quality_control.json"), file("${sorted_path}/quality_control")].findAll { it.exists() }
     quality_control_collector(quality_control_out.results.collect(), Channel.value(previous_qc), params_ch)

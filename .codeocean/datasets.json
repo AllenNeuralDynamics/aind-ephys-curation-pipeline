@@ -1,0 +1,13 @@
+{
+	"version": 1,
+	"attached_datasets": [
+		{
+			"id": "6d1e94a7-8e1c-4473-9077-3d7364046869",
+			"mount": "sorted"
+		},
+		{
+			"id": "8d620200-5b9d-4dcc-8618-dc435c66fd78",
+			"mount": "ecephys"
+		}
+	]
+}
