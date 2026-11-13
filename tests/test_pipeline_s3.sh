@@ -6,7 +6,7 @@
 set -e
 
 ECEPHYS_URL="s3://aind-open-data/866061_2026-11-05_11-30-44"
-SORTED_URL="s3://aind-open-data/866061_2026-11-05_11-30-44_sorted_2026-11-06_08-50-58"
+SORTED_URL="s3://aind-open-data/866061_2026-11-05_11-30-44_sorted_2026-11-06_13-45-17"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PIPELINE_PATH="$(dirname "$SCRIPT_DIR")"

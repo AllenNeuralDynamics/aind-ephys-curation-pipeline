@@ -171,13 +171,13 @@ def curatedAssetPath(String filename) {
 }
 
 // Copies the parts of the processed asset that curation does not change to RESULTS_PATH: preprocessed/,
-// spikesorted/ and the top-level JSONs (processing.json and quality_control.json are rewritten by the pipeline).
+// spikesorted/ and the top-level JSONs (processing.json and quality_control.json are rewritten by the pipeline; metadata.nd.json is not copied).
 // visualization/ is left out: its figures show the units before curation.
 def publishUnchangedAssetFiles() {
     def results = file(RESULTS_PATH.toString())
     results.mkdirs()
     def sources = ['preprocessed', 'spikesorted'].collect { file("${sorted_path}/${it}") }.findAll { it.exists() } +
-        files("${sorted_path}/*.json").findAll { !(it.name in ['processing.json', 'quality_control.json']) }
+        files("${sorted_path}/*.json").findAll { !(it.name in ['processing.json', 'quality_control.json', 'metadata.nd.json']) }
     sources.each { source ->
         def target = results.resolve(source.name)
         // copyTo nests a folder into an existing target, e.g. when re-running into the same RESULTS_PATH

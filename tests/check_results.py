@@ -56,6 +56,23 @@ def main():
         if recording_name in expected:
             assert result == expected[recording_name], f"Expected {expected[recording_name]} for {recording_name}"
 
+    # processing.json: one apply-curation process per curated stream, after the ones of the processed asset
+    processing = read_json(str(results / "processing.json"))
+    apply_curation_processes = [p for p in processing["data_processes"] if p["name"].startswith("Apply curation")]
+    assert len(apply_curation_processes) == len(analyzers), (
+        f"{len(apply_curation_processes)} apply-curation processes in processing.json for {len(analyzers)} streams"
+    )
+    print(f"processing.json: {len(processing['data_processes'])} data processes")
+
+    # unchanged parts of a local processed asset are published as is
+    sorted_folder = Path(args.sorted_url)
+    if sorted_folder.is_dir():
+        for json_file in sorted_folder.glob("*.json"):
+            if json_file.name not in ("processing.json", "quality_control.json"):
+                assert (results / json_file.name).read_text() == json_file.read_text(), f"{json_file.name} not published"
+        if (sorted_folder / "preprocessed").is_dir():
+            assert (results / "preprocessed").is_dir(), "preprocessed/ not published"
+
     # QC: raw-data metrics inherited unchanged, processing metrics recomputed
     qc = read_json(str(results / "quality_control.json"))
     input_qc = read_json(f"{args.sorted_url.rstrip('/')}/quality_control.json")

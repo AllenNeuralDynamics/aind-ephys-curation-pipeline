@@ -8,6 +8,8 @@ processed/: the asset the aind-ephys-pipeline would write for it, with known cur
 - NUM_NOISE random units are labeled noise by both UnitRefine and Bombcell (removed with "unitrefine&bombcell")
 - one good unit is labeled noise by UnitRefine only (removed only with "unitrefine|bombcell")
 - one curation merge pairs a noise unit with a good unit, and must be dropped with the noise unit
+- the second stream's curation has no merges: units keep original_cluster_id (an int property, which merges drop)
+  and get no is_merged, so the streams have different properties (the units table of the NWB needs the same)
 - nwb/ has a units table (to replace) and quality_control.json has raw-data metrics (to keep)
 processed/test_expected.json has the expected curation result of each stream, read by tests/check_results.py.
 
@@ -43,8 +45,8 @@ NUM_NOISE = 3
 DURATION = 60
 # ElectrodeGroup names must not contain underscores (see aind-ephys-pipeline's create_test_nwb.py)
 STREAMS = [
-    dict(es_name="main", device="NP1ProbeA", location="VISp", seed_offset=0),
-    dict(es_name="second", device="NP1ProbeB", location="VISl", seed_offset=1),
+    dict(es_name="main", device="NP1ProbeA", location="VISp", seed_offset=0, merge=True),
+    dict(es_name="second", device="NP1ProbeB", location="VISl", seed_offset=1, merge=False),
 ]
 EXTENSIONS = [
     "random_spikes", "noise_levels", "waveforms", "templates", "spike_amplitudes", "unit_locations",
@@ -81,7 +83,7 @@ def make_ground_truth(stream):
     return recording, sorting
 
 
-def make_sorting_to_curate(gt_sorting, seed):
+def make_sorting_to_curate(gt_sorting, seed, merge):
     """Ground truth with oversplit and noise units, the UnitRefine/Bombcell labels and the curation."""
     rng = np.random.default_rng(seed)
     num_samples = gt_sorting.to_spike_vector()["sample_index"].max() + 1
@@ -111,8 +113,9 @@ def make_sorting_to_curate(gt_sorting, seed):
     sorting.set_property("unitrefine_label", unitrefine_label)
     sorting.set_property("bombcell_label", bombcell_label)
     sorting.set_property("default_qc", bombcell_label != "noise")
+    sorting.set_property("original_cluster_id", np.arange(sorting.get_num_units()))
 
-    merges = oversplit_pairs + [[noise_unit_ids[0], good_unit_ids[-2]]]
+    merges = oversplit_pairs + [[noise_unit_ids[0], good_unit_ids[-2]]] if merge else []
     curation = {
         "format_version": "2",
         "unit_ids": [int(u) for u in sorting.unit_ids],
@@ -124,7 +127,9 @@ def make_sorting_to_curate(gt_sorting, seed):
     }
     # with "unitrefine&bombcell": noise units removed, their merge dropped, oversplit pairs merged
     expected = dict(
-        units=sorting.get_num_units() - NUM_NOISE - NUM_OVERSPLIT, removed=NUM_NOISE, merges=NUM_OVERSPLIT
+        units=sorting.get_num_units() - NUM_NOISE - (NUM_OVERSPLIT if merge else 0),
+        removed=NUM_NOISE,
+        merges=NUM_OVERSPLIT if merge else 0,
     )
     return sorting, curation, expected
 
@@ -176,7 +181,9 @@ def main():
         recording, gt_sorting, metadata = ground_truth[stream["es_name"]]
         # same names as the aind-ephys-pipeline outputs of an NWB input
         recording_name = f"block0_acquisition-{stream['es_name']}_recording1"
-        sorting, curation, expected[recording_name] = make_sorting_to_curate(gt_sorting, SEED + stream["seed_offset"])
+        sorting, curation, expected[recording_name] = make_sorting_to_curate(
+            gt_sorting, SEED + stream["seed_offset"], stream["merge"]
+        )
 
         # the analyzer is built on the raw recording, as read back by the pipeline
         raw_recording = se.read_nwb_recording(raw_folder / "sample.nwb", electrical_series_path=f"acquisition/{stream['es_name']}")
