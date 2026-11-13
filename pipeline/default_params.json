@@ -1,6 +1,6 @@
 {
     "logging": {
-        "package": "log-schema"
+        "package": "logging"
     },
     "job_dispatch": {
         "split_segments": true,
