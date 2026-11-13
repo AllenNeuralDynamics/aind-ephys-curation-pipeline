@@ -11,7 +11,10 @@ same layout.
 | `quality_control_collector` | once | new processing QC + the raw-data QC of the processed asset |
 | `job_dispatch`, `nwb_units` | once | replaces the units table of the processed asset NWB |
 
-Outputs (`RESULTS_PATH`): `postprocessed/`, `curated/`, `quality_control.json`, `quality_control/`, `nwb/`.
+Outputs (`RESULTS_PATH`): `postprocessed/`, `curated/`, `quality_control.json`, `quality_control/`, `nwb/`, and
+`processing.json` (the processed asset's, plus one apply-curation process per stream). `preprocessed/`, `spikesorted/`
+and the other top-level JSONs are copied unchanged from the processed asset (`visualization/` is not: its figures show
+the units before curation).
 
 ## Inputs
 
